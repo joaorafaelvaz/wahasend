@@ -19,10 +19,20 @@ export interface Attachment {
   preview?: string;
 }
 
+export type SendMode = "contacts" | "groups";
+
+export interface WhatsAppGroup {
+  id: string;
+  name: string;
+  participants: number;
+  selected: boolean;
+}
+
 export interface Contact {
   index: number;
   name: string;
   phone: string;
+  chatId?: string;
   variables: Record<string, string>;
   status: "pending" | "sending" | "sent" | "failed";
   errorMessage?: string;
@@ -41,6 +51,7 @@ export type WizardStep = 1 | 2 | 3 | 4 | 5 | 6;
 
 export interface WizardState {
   currentStep: WizardStep;
+  sendMode: SendMode;
   spreadsheet: SpreadsheetData | null;
   columnMappings: ColumnMapping[];
   message: string;
@@ -48,6 +59,8 @@ export interface WizardState {
   sessionName: string | null;
   isAuthenticated: boolean;
   sendInterval: number;
+  groups: WhatsAppGroup[];
+  selectedGroups: WhatsAppGroup[];
   sendResult: SendResult | null;
   isSending: boolean;
   isCancelled: boolean;
@@ -55,6 +68,7 @@ export interface WizardState {
 
 export type WizardAction =
   | { type: "SET_STEP"; step: WizardStep }
+  | { type: "SET_SEND_MODE"; mode: SendMode }
   | { type: "SET_SPREADSHEET"; data: SpreadsheetData }
   | { type: "SET_COLUMN_MAPPINGS"; mappings: ColumnMapping[] }
   | { type: "SET_MESSAGE"; message: string }
@@ -62,6 +76,8 @@ export type WizardAction =
   | { type: "SET_SESSION"; name: string }
   | { type: "SET_AUTHENTICATED"; value: boolean }
   | { type: "SET_SEND_INTERVAL"; seconds: number }
+  | { type: "SET_GROUPS"; groups: WhatsAppGroup[] }
+  | { type: "SET_SELECTED_GROUPS"; groups: WhatsAppGroup[] }
   | { type: "SET_SEND_RESULT"; result: SendResult }
   | { type: "UPDATE_CONTACT_STATUS"; index: number; status: Contact["status"]; errorMessage?: string }
   | { type: "SET_SENDING"; value: boolean }

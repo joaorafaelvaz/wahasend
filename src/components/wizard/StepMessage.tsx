@@ -12,17 +12,23 @@ export default function StepMessage() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [message, setMessage] = useState(state.message || "");
 
-  const variables = state.columnMappings
-    .filter((m) => m.role === "nome" || m.role === "variavel")
-    .map((m) => ({
-      key: m.role === "nome" ? "Nome" : (m.variableName || m.header),
-      header: m.header,
-    }));
+  const isGroupMode = state.sendMode === "groups";
 
-  const phoneMapping = state.columnMappings.find((m) => m.role === "telefone");
-  if (phoneMapping) {
-    variables.push({ key: "Telefone", header: phoneMapping.header });
-  }
+  const variables = isGroupMode
+    ? []
+    : (() => {
+        const vars = state.columnMappings
+          .filter((m) => m.role === "nome" || m.role === "variavel")
+          .map((m) => ({
+            key: m.role === "nome" ? "Nome" : (m.variableName || m.header),
+            header: m.header,
+          }));
+        const phoneMapping = state.columnMappings.find((m) => m.role === "telefone");
+        if (phoneMapping) {
+          vars.push({ key: "Telefone", header: phoneMapping.header });
+        }
+        return vars;
+      })();
 
   const insertVariable = (varName: string) => {
     const textarea = textareaRef.current;
@@ -41,6 +47,7 @@ export default function StepMessage() {
   };
 
   const getPreview = (): string => {
+    if (isGroupMode) return message;
     if (!state.spreadsheet || state.spreadsheet.rows.length === 0) return message;
     const firstRow = state.spreadsheet.rows[0];
     const vars: Record<string, string> = {};
@@ -79,7 +86,7 @@ export default function StepMessage() {
 
   const handleBack = () => {
     dispatch({ type: "SET_MESSAGE", message });
-    dispatch({ type: "SET_STEP", step: 2 });
+    dispatch({ type: "SET_STEP", step: isGroupMode ? 1 : 2 });
   };
 
   return (
@@ -87,25 +94,29 @@ export default function StepMessage() {
       <div>
         <h2 className="text-xl font-semibold text-text-primary">Compor Mensagem</h2>
         <p className="text-sm text-text-muted mt-1">
-          Escreva sua mensagem. Use variáveis para personalizar.
+          {isGroupMode
+            ? "Escreva a mensagem que será enviada aos grupos selecionados."
+            : "Escreva sua mensagem. Use variáveis para personalizar."}
         </p>
       </div>
 
-      {/* Variable chips */}
-      <div>
-        <p className="text-xs text-text-muted mb-2">Inserir variável:</p>
-        <div className="flex flex-wrap gap-2">
-          {variables.map((v) => (
-            <button
-              key={v.key}
-              onClick={() => insertVariable(v.key)}
-              className="px-3 py-1 text-xs font-medium bg-accent/10 text-accent border border-accent/20 rounded-full hover:bg-accent/20 transition-colors cursor-pointer"
-            >
-              {`{{${v.key}}}`}
-            </button>
-          ))}
+      {/* Variable chips (only for contacts mode) */}
+      {!isGroupMode && variables.length > 0 && (
+        <div>
+          <p className="text-xs text-text-muted mb-2">Inserir variável:</p>
+          <div className="flex flex-wrap gap-2">
+            {variables.map((v) => (
+              <button
+                key={v.key}
+                onClick={() => insertVariable(v.key)}
+                className="px-3 py-1 text-xs font-medium bg-accent/10 text-accent border border-accent/20 rounded-full hover:bg-accent/20 transition-colors cursor-pointer"
+              >
+                {`{{${v.key}}}`}
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Message & Preview side by side */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -115,14 +126,14 @@ export default function StepMessage() {
             ref={textareaRef}
             value={message}
             onChange={(e) => setMessage(e.target.value)}
-            placeholder="Olá {{Nome}}, tudo bem? ..."
+            placeholder={isGroupMode ? "Olá pessoal, tudo bem? ..." : "Olá {{Nome}}, tudo bem? ..."}
             rows={8}
             className="w-full bg-surface-hover border border-border-subtle rounded-lg px-4 py-3 text-sm text-text-primary placeholder:text-text-muted/50 focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 transition-colors resize-none"
           />
           <p className="text-xs text-text-muted mt-1">{message.length} caracteres</p>
         </div>
         <div>
-          <label className="text-sm font-medium text-text-muted mb-1.5 block">Preview (1o contato)</label>
+          <label className="text-sm font-medium text-text-muted mb-1.5 block">{isGroupMode ? "Preview" : "Preview (1o contato)"}</label>
           <div className="bg-surface-hover border border-border-subtle rounded-lg px-4 py-3 text-sm text-text-primary min-h-[200px] whitespace-pre-wrap">
             {getPreview() || <span className="text-text-muted italic">Sua mensagem aparecerá aqui...</span>}
           </div>

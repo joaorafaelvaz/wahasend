@@ -16,6 +16,7 @@ export default function StepReport() {
     }
   }, [state.sessionName]);
 
+  const isGroupMode = state.sendMode === "groups";
   const result = state.sendResult;
   if (!result) return null;
 
@@ -25,13 +26,23 @@ export default function StepReport() {
   const durationSec = Math.floor((durationMs % 60000) / 1000);
 
   const exportCSV = () => {
-    const headers = ["Nome", "Telefone", "Status", "Motivo"];
-    const rows = result.contacts.map((c) => [
-      c.name,
-      c.phone,
-      c.status === "sent" ? "Enviado" : c.status === "failed" ? "Falhou" : "Pendente",
-      c.errorMessage || "",
-    ]);
+    const headers = isGroupMode
+      ? ["Grupo", "Status", "Motivo"]
+      : ["Nome", "Telefone", "Status", "Motivo"];
+    const rows = result.contacts.map((c) =>
+      isGroupMode
+        ? [
+            c.name,
+            c.status === "sent" ? "Enviado" : c.status === "failed" ? "Falhou" : "Pendente",
+            c.errorMessage || "",
+          ]
+        : [
+            c.name,
+            c.phone,
+            c.status === "sent" ? "Enviado" : c.status === "failed" ? "Falhou" : "Pendente",
+            c.errorMessage || "",
+          ]
+    );
 
     const csv = [headers, ...rows]
       .map((row) => row.map((cell) => `"${cell.replace(/"/g, '""')}"`).join(","))
@@ -87,8 +98,12 @@ export default function StepReport() {
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-surface">
-              <th className="px-4 py-2.5 text-left font-medium text-text-muted border-b border-border-subtle">Nome</th>
-              <th className="px-4 py-2.5 text-left font-medium text-text-muted border-b border-border-subtle">Telefone</th>
+              <th className="px-4 py-2.5 text-left font-medium text-text-muted border-b border-border-subtle">
+                {isGroupMode ? "Grupo" : "Nome"}
+              </th>
+              {!isGroupMode && (
+                <th className="px-4 py-2.5 text-left font-medium text-text-muted border-b border-border-subtle">Telefone</th>
+              )}
               <th className="px-4 py-2.5 text-left font-medium text-text-muted border-b border-border-subtle">Status</th>
               <th className="px-4 py-2.5 text-left font-medium text-text-muted border-b border-border-subtle">Motivo</th>
             </tr>
@@ -100,7 +115,9 @@ export default function StepReport() {
                 className="border-b border-border-subtle last:border-b-0 hover:bg-surface/50"
               >
                 <td className="px-4 py-2 text-text-primary">{contact.name}</td>
-                <td className="px-4 py-2 text-text-primary">{contact.phone}</td>
+                {!isGroupMode && (
+                  <td className="px-4 py-2 text-text-primary">{contact.phone}</td>
+                )}
                 <td className="px-4 py-2">
                   {contact.status === "sent" ? (
                     <span className="inline-flex items-center gap-1 text-success">

@@ -5,6 +5,7 @@ import type { WizardState, WizardAction } from "@/types";
 
 const initialState: WizardState = {
   currentStep: 1,
+  sendMode: "contacts",
   spreadsheet: null,
   columnMappings: [],
   message: "",
@@ -12,6 +13,8 @@ const initialState: WizardState = {
   sessionName: null,
   isAuthenticated: false,
   sendInterval: 5,
+  groups: [],
+  selectedGroups: [],
   sendResult: null,
   isSending: false,
   isCancelled: false,
@@ -21,6 +24,8 @@ function wizardReducer(state: WizardState, action: WizardAction): WizardState {
   switch (action.type) {
     case "SET_STEP":
       return { ...state, currentStep: action.step };
+    case "SET_SEND_MODE":
+      return { ...state, sendMode: action.mode };
     case "SET_SPREADSHEET":
       return { ...state, spreadsheet: action.data };
     case "SET_COLUMN_MAPPINGS":
@@ -35,6 +40,10 @@ function wizardReducer(state: WizardState, action: WizardAction): WizardState {
       return { ...state, isAuthenticated: action.value };
     case "SET_SEND_INTERVAL":
       return { ...state, sendInterval: action.seconds };
+    case "SET_GROUPS":
+      return { ...state, groups: action.groups };
+    case "SET_SELECTED_GROUPS":
+      return { ...state, selectedGroups: action.groups };
     case "SET_SEND_RESULT":
       return { ...state, sendResult: action.result };
     case "UPDATE_CONTACT_STATUS": {

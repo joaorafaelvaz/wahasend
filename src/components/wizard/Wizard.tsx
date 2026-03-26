@@ -31,7 +31,7 @@ export default function Wizard() {
 
   return (
     <div className="w-full max-w-4xl mx-auto">
-      <Stepper currentStep={state.currentStep} />
+      <Stepper currentStep={state.currentStep} sendMode={state.sendMode} />
       <div className="bg-surface border border-border-subtle rounded-2xl p-6 sm:p-8">
         {renderStep()}
       </div>

@@ -1,8 +1,8 @@
 "use client";
 
-import type { WizardStep } from "@/types";
+import type { WizardStep, SendMode } from "@/types";
 
-const steps: { number: WizardStep; label: string }[] = [
+const contactSteps: { number: WizardStep; label: string }[] = [
   { number: 1, label: "Upload" },
   { number: 2, label: "Mapear" },
   { number: 3, label: "Mensagem" },
@@ -11,11 +11,22 @@ const steps: { number: WizardStep; label: string }[] = [
   { number: 6, label: "Relatório" },
 ];
 
+const groupSteps: { number: WizardStep; label: string }[] = [
+  { number: 1, label: "Modo" },
+  { number: 3, label: "Mensagem" },
+  { number: 4, label: "Autenticar" },
+  { number: 5, label: "Enviar" },
+  { number: 6, label: "Relatório" },
+];
+
 interface StepperProps {
   currentStep: WizardStep;
+  sendMode: SendMode;
 }
 
-export default function Stepper({ currentStep }: StepperProps) {
+export default function Stepper({ currentStep, sendMode }: StepperProps) {
+  const steps = sendMode === "groups" ? groupSteps : contactSteps;
+
   return (
     <div className="flex items-center justify-center gap-0 w-full max-w-2xl mx-auto mb-8">
       {steps.map((step, i) => {
@@ -39,7 +50,7 @@ export default function Stepper({ currentStep }: StepperProps) {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
                   </svg>
                 ) : (
-                  step.number
+                  i + 1
                 )}
               </div>
               <span

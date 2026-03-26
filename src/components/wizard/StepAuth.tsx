@@ -2,10 +2,11 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useWizard } from "@/context/WizardContext";
-import { createSession, getQrCode, getSessionStatus } from "@/lib/waha-client";
+import { createSession, getQrCode, getSessionStatus, getGroups } from "@/lib/waha-client";
 import { v4 as uuidv4 } from "uuid";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
+import type { WhatsAppGroup } from "@/types";
 
 export default function StepAuth() {
   const { state, dispatch } = useWizard();
@@ -13,8 +14,12 @@ export default function StepAuth() {
   const [qrCode, setQrCode] = useState<string | null>(null);
   const [status, setStatus] = useState<string>("idle");
   const [error, setError] = useState<string | null>(null);
+  const [loadingGroups, setLoadingGroups] = useState(false);
+  const [groupSearch, setGroupSearch] = useState("");
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const sessionRef = useRef<string | null>(state.sessionName);
+
+  const isGroupMode = state.sendMode === "groups";
 
   const stopPolling = useCallback(() => {
     if (pollingRef.current) {
@@ -27,6 +32,24 @@ export default function StepAuth() {
     return () => stopPolling();
   }, [stopPolling]);
 
+  const fetchGroups = useCallback(async (sessionName: string) => {
+    setLoadingGroups(true);
+    try {
+      const rawGroups = await getGroups(sessionName);
+      const groups: WhatsAppGroup[] = rawGroups.map((g) => ({
+        id: g.id,
+        name: g.name || g.id,
+        participants: g.participants?.length || 0,
+        selected: false,
+      }));
+      dispatch({ type: "SET_GROUPS", groups });
+    } catch {
+      setError("Falha ao carregar grupos. Verifique sua conexão.");
+    } finally {
+      setLoadingGroups(false);
+    }
+  }, [dispatch]);
+
   const startPolling = useCallback((sessionName: string) => {
     stopPolling();
     pollingRef.current = setInterval(async () => {
@@ -36,6 +59,9 @@ export default function StepAuth() {
           stopPolling();
           setStatus("connected");
           dispatch({ type: "SET_AUTHENTICATED", value: true });
+          if (isGroupMode) {
+            fetchGroups(sessionName);
+          }
         } else if (s === "SCAN_QR_CODE") {
           try {
             const qr = await getQrCode(sessionName);
@@ -52,7 +78,7 @@ export default function StepAuth() {
         // Network error, keep polling
       }
     }, 3000);
-  }, [stopPolling, dispatch]);
+  }, [stopPolling, dispatch, isGroupMode, fetchGroups]);
 
   const handleConnect = async () => {
     setError(null);
@@ -66,7 +92,6 @@ export default function StepAuth() {
       await createSession(sessionName);
       setStatus("waiting_qr");
 
-      // Wait a moment for session to initialize
       await new Promise((r) => setTimeout(r, 2000));
 
       try {
@@ -83,8 +108,25 @@ export default function StepAuth() {
     }
   };
 
+  const toggleGroup = (groupId: string) => {
+    const updated = state.groups.map((g) =>
+      g.id === groupId ? { ...g, selected: !g.selected } : g
+    );
+    dispatch({ type: "SET_GROUPS", groups: updated });
+  };
+
+  const selectedCount = state.groups.filter((g) => g.selected).length;
+
+  const filteredGroups = state.groups.filter((g) =>
+    g.name.toLowerCase().includes(groupSearch.toLowerCase())
+  );
+
   const handleNext = () => {
     dispatch({ type: "SET_SEND_INTERVAL", seconds: interval });
+    if (isGroupMode) {
+      const selected = state.groups.filter((g) => g.selected);
+      dispatch({ type: "SET_SELECTED_GROUPS", groups: selected });
+    }
     dispatch({ type: "SET_STEP", step: 5 });
   };
 
@@ -92,19 +134,25 @@ export default function StepAuth() {
     dispatch({ type: "SET_STEP", step: 3 });
   };
 
+  const canProceed = isGroupMode
+    ? state.isAuthenticated && selectedCount > 0
+    : state.isAuthenticated;
+
   return (
     <div className="space-y-6">
       <div>
         <h2 className="text-xl font-semibold text-text-primary">Autenticação WhatsApp</h2>
         <p className="text-sm text-text-muted mt-1">
-          Configure o intervalo de envio e conecte seu WhatsApp
+          {isGroupMode
+            ? "Conecte seu WhatsApp e selecione os grupos para envio"
+            : "Configure o intervalo de envio e conecte seu WhatsApp"}
         </p>
       </div>
 
       {/* Send interval */}
       <div className="max-w-xs">
         <Input
-          label="Intervalo entre mensagens (segundos)"
+          label={isGroupMode ? "Intervalo entre grupos (segundos)" : "Intervalo entre mensagens (segundos)"}
           type="number"
           min={1}
           max={60}
@@ -162,12 +210,79 @@ export default function StepAuth() {
         ) : null}
       </div>
 
+      {/* Group selection (only for groups mode, after authentication) */}
+      {isGroupMode && state.isAuthenticated && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-base font-medium text-text-primary">Selecionar Grupos</h3>
+            <span className="text-xs text-accent font-medium">
+              {selectedCount} grupo{selectedCount !== 1 ? "s" : ""} selecionado{selectedCount !== 1 ? "s" : ""}
+            </span>
+          </div>
+
+          {loadingGroups ? (
+            <div className="flex flex-col items-center gap-3 py-8">
+              <div className="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+              <p className="text-sm text-text-muted">Carregando grupos...</p>
+            </div>
+          ) : state.groups.length === 0 ? (
+            <div className="text-center py-8">
+              <p className="text-sm text-text-muted">Nenhum grupo encontrado</p>
+            </div>
+          ) : (
+            <>
+              {/* Search */}
+              <input
+                type="text"
+                placeholder="Buscar grupo..."
+                value={groupSearch}
+                onChange={(e) => setGroupSearch(e.target.value)}
+                className="w-full bg-surface-hover border border-border-subtle rounded-lg px-4 py-2.5 text-sm text-text-primary placeholder:text-text-muted/50 focus:outline-none focus:border-accent transition-colors"
+              />
+
+              {/* Group list */}
+              <div className="max-h-64 overflow-y-auto rounded-lg border border-border-subtle">
+                {filteredGroups.map((group) => (
+                  <button
+                    key={group.id}
+                    onClick={() => toggleGroup(group.id)}
+                    className={`w-full flex items-center gap-3 px-4 py-3 border-b border-border-subtle last:border-b-0 transition-colors cursor-pointer text-left ${
+                      group.selected ? "bg-accent/5" : "hover:bg-surface-hover"
+                    }`}
+                  >
+                    <div
+                      className={`w-5 h-5 rounded flex-shrink-0 border-2 flex items-center justify-center transition-colors ${
+                        group.selected
+                          ? "bg-accent border-accent"
+                          : "border-border-subtle"
+                      }`}
+                    >
+                      {group.selected && (
+                        <svg className="w-3 h-3 text-dark" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                        </svg>
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-text-primary truncate">{group.name}</p>
+                      <p className="text-xs text-text-muted">
+                        {group.participants} participante{group.participants !== 1 ? "s" : ""}
+                      </p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
       <div className="flex justify-between">
         <Button variant="secondary" onClick={handleBack}>
           Voltar
         </Button>
-        <Button onClick={handleNext} disabled={!state.isAuthenticated}>
-          Iniciar Envio
+        <Button onClick={handleNext} disabled={!canProceed}>
+          {isGroupMode ? `Enviar para ${selectedCount} grupo${selectedCount !== 1 ? "s" : ""}` : "Iniciar Envio"}
         </Button>
       </div>
     </div>

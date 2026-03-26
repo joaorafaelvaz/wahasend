@@ -19,7 +19,20 @@ export default function StepSending() {
   const cancelledRef = useRef(false);
   const startedRef = useRef(false);
 
+  const isGroupMode = state.sendMode === "groups";
+
   const buildContacts = useCallback((): Contact[] => {
+    if (isGroupMode) {
+      return state.selectedGroups.map((group, i) => ({
+        index: i,
+        name: group.name,
+        phone: "",
+        chatId: group.id,
+        variables: {},
+        status: "pending" as const,
+      }));
+    }
+
     if (!state.spreadsheet) return [];
 
     const nameMapping = state.columnMappings.find((m) => m.role === "nome");
@@ -47,7 +60,7 @@ export default function StepSending() {
         status: "pending" as const,
       };
     });
-  }, [state.spreadsheet, state.columnMappings]);
+  }, [isGroupMode, state.selectedGroups, state.spreadsheet, state.columnMappings]);
 
   const sendMessages = useCallback(async () => {
     if (!state.sessionName) return;
@@ -71,22 +84,31 @@ export default function StepSending() {
       dispatch({ type: "UPDATE_CONTACT_STATUS", index: i, status: "sending" });
 
       try {
-        // Check number
-        const chatId = formatPhoneForChat(contact.phone);
-        const exists = await checkNumber(state.sessionName, contact.phone);
+        let chatId: string;
 
-        if (!exists) {
-          dispatch({
-            type: "UPDATE_CONTACT_STATUS",
-            index: i,
-            status: "failed",
-            errorMessage: "Número não encontrado no WhatsApp",
-          });
-          continue;
+        if (isGroupMode) {
+          // Groups: use group ID directly, no number check
+          chatId = contact.chatId || contact.name;
+        } else {
+          // Contacts: check number first
+          chatId = formatPhoneForChat(contact.phone);
+          const exists = await checkNumber(state.sessionName, contact.phone);
+
+          if (!exists) {
+            dispatch({
+              type: "UPDATE_CONTACT_STATUS",
+              index: i,
+              status: "failed",
+              errorMessage: "Número não encontrado no WhatsApp",
+            });
+            continue;
+          }
         }
 
-        // Render message
-        const text = renderMessage(state.message, contact.variables);
+        // Render message (variables only apply to contacts mode)
+        const text = isGroupMode
+          ? state.message
+          : renderMessage(state.message, contact.variables);
 
         // Send
         if (state.attachment) {
@@ -122,7 +144,7 @@ export default function StepSending() {
         });
       }
 
-      // Wait interval before next message
+      // Wait interval
       if (i < contacts.length - 1 && !cancelledRef.current) {
         await new Promise((r) => setTimeout(r, state.sendInterval * 1000));
       }
@@ -130,7 +152,7 @@ export default function StepSending() {
 
     dispatch({ type: "SET_SENDING", value: false });
     dispatch({ type: "SET_STEP", step: 6 });
-  }, [state.sessionName, state.message, state.attachment, state.sendInterval, state.columnMappings, buildContacts, dispatch]);
+  }, [isGroupMode, state.sessionName, state.message, state.attachment, state.sendInterval, buildContacts, dispatch]);
 
   useEffect(() => {
     if (!startedRef.current) {
@@ -150,12 +172,14 @@ export default function StepSending() {
   const failed = state.sendResult?.failed || 0;
   const processed = sent + failed;
 
+  const entityLabel = isGroupMode ? "grupos" : "contatos";
+
   return (
     <div className="space-y-6">
       <div>
         <h2 className="text-xl font-semibold text-text-primary">Enviando Mensagens</h2>
         <p className="text-sm text-text-muted mt-1">
-          Enviando para {total} contatos com intervalo de {state.sendInterval}s
+          Enviando para {total} {entityLabel} com intervalo de {state.sendInterval}s
         </p>
       </div>
 
@@ -177,7 +201,7 @@ export default function StepSending() {
         </div>
       </div>
 
-      {/* Contact list */}
+      {/* Contact/Group list */}
       <div className="max-h-64 overflow-y-auto rounded-lg border border-border-subtle">
         {state.sendResult?.contacts.map((contact) => (
           <div
@@ -205,7 +229,9 @@ export default function StepSending() {
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm text-text-primary truncate">{contact.name}</p>
-              <p className="text-xs text-text-muted">{contact.phone}</p>
+              {!isGroupMode && (
+                <p className="text-xs text-text-muted">{contact.phone}</p>
+              )}
             </div>
             {contact.errorMessage && (
               <p className="text-xs text-error truncate max-w-[200px]">{contact.errorMessage}</p>

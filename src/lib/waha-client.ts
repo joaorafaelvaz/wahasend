@@ -94,6 +94,20 @@ export async function sendFileMessage(
   }
 }
 
+export interface WAGroup {
+  id: string;
+  name: string;
+  participants: { id: string }[];
+}
+
+export async function getGroups(session: string): Promise<WAGroup[]> {
+  const res = await fetch(`/api/waha/groups?session=${encodeURIComponent(session)}`);
+  if (!res.ok) {
+    throw new Error("Falha ao listar grupos");
+  }
+  return res.json();
+}
+
 export function formatPhoneForChat(phone: string): string {
   const digits = phone.replace(/\D/g, "");
   return `${digits}@c.us`;
