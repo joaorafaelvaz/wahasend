@@ -6,7 +6,18 @@ export async function POST(request: NextRequest) {
     const { name } = await request.json();
     const res = await wahaFetch("/api/sessions", {
       method: "POST",
-      body: JSON.stringify({ name, start: true }),
+      body: JSON.stringify({
+        name,
+        start: true,
+        config: {
+          noweb: {
+            store: {
+              enabled: true,
+              fullSync: true,
+            },
+          },
+        },
+      }),
     });
     const data = await res.json();
     if (!res.ok) {
