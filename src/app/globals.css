@@ -1,0 +1,52 @@
+@import "tailwindcss";
+
+@theme {
+  --color-dark: #0a0a0a;
+  --color-surface: #141414;
+  --color-surface-hover: #1a1a1a;
+  --color-border-subtle: #262626;
+  --color-text-primary: #fafafa;
+  --color-text-muted: #a1a1aa;
+  --color-accent: #d4a853;
+  --color-accent-hover: #e8c06a;
+  --color-success: #22c55e;
+  --color-error: #ef4444;
+}
+
+body {
+  background-color: var(--color-dark);
+  color: var(--color-text-primary);
+  font-family: "Inter", sans-serif;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--color-dark);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-border-subtle);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-muted);
+}
+
+/* QR Code container animation */
+@keyframes pulse-border {
+  0%, 100% { border-color: var(--color-accent); }
+  50% { border-color: transparent; }
+}
+.qr-scanning {
+  animation: pulse-border 2s ease-in-out infinite;
+}
+
+/* Spin animation for sending indicator */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
