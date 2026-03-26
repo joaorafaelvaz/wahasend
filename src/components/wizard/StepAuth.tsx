@@ -223,11 +223,22 @@ export default function StepAuth() {
           {loadingGroups ? (
             <div className="flex flex-col items-center gap-3 py-8">
               <div className="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin" />
-              <p className="text-sm text-text-muted">Carregando grupos...</p>
+              <p className="text-sm text-text-muted">Carregando grupos... A sincronização pode levar alguns minutos.</p>
             </div>
           ) : state.groups.length === 0 ? (
-            <div className="text-center py-8">
+            <div className="flex flex-col items-center gap-3 py-8">
               <p className="text-sm text-text-muted">Nenhum grupo encontrado</p>
+              <p className="text-xs text-text-muted">A sincronização pode demorar. Aguarde e tente novamente.</p>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => state.sessionName && fetchGroups(state.sessionName)}
+              >
+                <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                Buscar novamente
+              </Button>
             </div>
           ) : (
             <>
