@@ -13,7 +13,7 @@ export async function POST(request: NextRequest) {
           noweb: {
             store: {
               enabled: true,
-              fullSync: true,
+              fullSync: false,
             },
           },
         },

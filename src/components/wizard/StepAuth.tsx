@@ -16,10 +16,14 @@ export default function StepAuth() {
   const [error, setError] = useState<string | null>(null);
   const [loadingGroups, setLoadingGroups] = useState(false);
   const [groupSearch, setGroupSearch] = useState("");
+  const [groupPollCount, setGroupPollCount] = useState(0);
+  const [groupPollActive, setGroupPollActive] = useState(false);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const groupPollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const sessionRef = useRef<string | null>(state.sessionName);
 
   const isGroupMode = state.sendMode === "groups";
+  const MAX_GROUP_POLLS = 24; // 24 x 5s = 2 minutes max
 
   const stopPolling = useCallback(() => {
     if (pollingRef.current) {
@@ -28,11 +32,22 @@ export default function StepAuth() {
     }
   }, []);
 
-  useEffect(() => {
-    return () => stopPolling();
-  }, [stopPolling]);
+  const stopGroupPolling = useCallback(() => {
+    if (groupPollingRef.current) {
+      clearInterval(groupPollingRef.current);
+      groupPollingRef.current = null;
+    }
+    setGroupPollActive(false);
+  }, []);
 
-  const fetchGroups = useCallback(async (sessionName: string) => {
+  useEffect(() => {
+    return () => {
+      stopPolling();
+      stopGroupPolling();
+    };
+  }, [stopPolling, stopGroupPolling]);
+
+  const fetchGroups = useCallback(async (sessionName: string): Promise<boolean> => {
     setLoadingGroups(true);
     try {
       const rawGroups = await getGroups(sessionName);
@@ -43,12 +58,45 @@ export default function StepAuth() {
         selected: false,
       }));
       dispatch({ type: "SET_GROUPS", groups });
+      return groups.length > 0;
     } catch {
-      setError("Falha ao carregar grupos. Verifique sua conexão.");
+      // Don't show error during auto-polling, only on manual action
+      return false;
     } finally {
       setLoadingGroups(false);
     }
   }, [dispatch]);
+
+  const startGroupPolling = useCallback((sessionName: string) => {
+    stopGroupPolling();
+    setGroupPollCount(0);
+    setGroupPollActive(true);
+
+    // Immediate first fetch
+    fetchGroups(sessionName).then((found) => {
+      if (found) {
+        stopGroupPolling();
+        return;
+      }
+    });
+
+    // Then poll every 5 seconds
+    groupPollingRef.current = setInterval(async () => {
+      setGroupPollCount((prev) => {
+        const next = prev + 1;
+        if (next >= MAX_GROUP_POLLS) {
+          stopGroupPolling();
+          return next;
+        }
+        return next;
+      });
+
+      const found = await fetchGroups(sessionName);
+      if (found) {
+        stopGroupPolling();
+      }
+    }, 5000);
+  }, [fetchGroups, stopGroupPolling, MAX_GROUP_POLLS]);
 
   const startPolling = useCallback((sessionName: string) => {
     stopPolling();
@@ -60,7 +108,7 @@ export default function StepAuth() {
           setStatus("connected");
           dispatch({ type: "SET_AUTHENTICATED", value: true });
           if (isGroupMode) {
-            fetchGroups(sessionName);
+            startGroupPolling(sessionName);
           }
         } else if (s === "SCAN_QR_CODE") {
           try {
@@ -78,7 +126,7 @@ export default function StepAuth() {
         // Network error, keep polling
       }
     }, 3000);
-  }, [stopPolling, dispatch, isGroupMode, fetchGroups]);
+  }, [stopPolling, dispatch, isGroupMode, startGroupPolling]);
 
   const handleConnect = async () => {
     setError(null);
@@ -105,6 +153,17 @@ export default function StepAuth() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro ao criar sessão");
       setStatus("error");
+    }
+  };
+
+  const handleManualRefresh = async () => {
+    if (!state.sessionName) return;
+    setError(null);
+    setLoadingGroups(true);
+    const found = await fetchGroups(state.sessionName);
+    if (!found) {
+      // Restart auto-polling
+      startGroupPolling(state.sessionName);
     }
   };
 
@@ -137,6 +196,10 @@ export default function StepAuth() {
   const canProceed = isGroupMode
     ? state.isAuthenticated && selectedCount > 0
     : state.isAuthenticated;
+
+  const remainingSeconds = groupPollActive
+    ? Math.max(0, (MAX_GROUP_POLLS - groupPollCount) * 5)
+    : 0;
 
   return (
     <div className="space-y-6">
@@ -220,36 +283,106 @@ export default function StepAuth() {
             </span>
           </div>
 
-          {loadingGroups ? (
+          {loadingGroups && state.groups.length === 0 ? (
             <div className="flex flex-col items-center gap-3 py-8">
               <div className="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin" />
-              <p className="text-sm text-text-muted">Carregando grupos... A sincronização pode levar alguns minutos.</p>
+              <p className="text-sm text-text-muted">Carregando grupos...</p>
             </div>
           ) : state.groups.length === 0 ? (
-            <div className="flex flex-col items-center gap-3 py-8">
-              <p className="text-sm text-text-muted">Nenhum grupo encontrado</p>
-              <p className="text-xs text-text-muted">A sincronização pode demorar. Aguarde e tente novamente.</p>
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => state.sessionName && fetchGroups(state.sessionName)}
-              >
-                <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            <div className="flex flex-col items-center gap-4 py-8 px-4">
+              <div className="w-12 h-12 rounded-full bg-accent/10 flex items-center justify-center">
+                <svg className="w-6 h-6 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
                 </svg>
-                Buscar novamente
-              </Button>
+              </div>
+
+              {groupPollActive ? (
+                <>
+                  <div className="text-center">
+                    <p className="text-sm text-text-primary font-medium">Aguardando sincronização...</p>
+                    <p className="text-xs text-text-muted mt-1">
+                      O WhatsApp está sincronizando seus grupos. Buscando automaticamente a cada 5 segundos.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+                    <span className="text-xs text-text-muted">
+                      Tentativa {groupPollCount + 1}/{MAX_GROUP_POLLS} — ~{remainingSeconds}s restantes
+                    </span>
+                  </div>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={stopGroupPolling}
+                  >
+                    Parar busca automática
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <div className="text-center">
+                    <p className="text-sm text-text-primary font-medium">Nenhum grupo encontrado</p>
+                    <p className="text-xs text-text-muted mt-1">
+                      {groupPollCount >= MAX_GROUP_POLLS
+                        ? "A busca automática expirou. Seus grupos podem precisar de mais tempo para sincronizar."
+                        : "A sincronização pode demorar dependendo da quantidade de dados no WhatsApp."
+                      }
+                    </p>
+                  </div>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={handleManualRefresh}
+                    disabled={loadingGroups}
+                  >
+                    {loadingGroups ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin mr-1.5" />
+                        Buscando...
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                        Buscar novamente
+                      </>
+                    )}
+                  </Button>
+                </>
+              )}
             </div>
           ) : (
             <>
-              {/* Search */}
-              <input
-                type="text"
-                placeholder="Buscar grupo..."
-                value={groupSearch}
-                onChange={(e) => setGroupSearch(e.target.value)}
-                className="w-full bg-surface-hover border border-border-subtle rounded-lg px-4 py-2.5 text-sm text-text-primary placeholder:text-text-muted/50 focus:outline-none focus:border-accent transition-colors"
-              />
+              {/* Search + refresh */}
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="Buscar grupo..."
+                  value={groupSearch}
+                  onChange={(e) => setGroupSearch(e.target.value)}
+                  className="flex-1 bg-surface-hover border border-border-subtle rounded-lg px-4 py-2.5 text-sm text-text-primary placeholder:text-text-muted/50 focus:outline-none focus:border-accent transition-colors"
+                />
+                <button
+                  onClick={handleManualRefresh}
+                  disabled={loadingGroups}
+                  className="px-3 py-2.5 bg-surface-hover border border-border-subtle rounded-lg hover:border-accent transition-colors disabled:opacity-50 cursor-pointer"
+                  title="Atualizar lista de grupos"
+                >
+                  <svg
+                    className={`w-4 h-4 text-text-muted ${loadingGroups ? "animate-spin" : ""}`}
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                </button>
+              </div>
+
+              <p className="text-xs text-text-muted">
+                {state.groups.length} grupo{state.groups.length !== 1 ? "s" : ""} encontrado{state.groups.length !== 1 ? "s" : ""}
+              </p>
 
               {/* Group list */}
               <div className="max-h-64 overflow-y-auto rounded-lg border border-border-subtle">
